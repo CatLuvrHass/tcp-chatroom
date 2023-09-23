@@ -1,58 +1,55 @@
 import threading
 import socket
+import common
 
-host = '127.0.0.0' # local host
-port = 55555
+class Server:
+    """
+        Server class will host and handle users.
+    """
 
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.bind((host, port))
-server.listen()
+    def __init__(self, host, port):
+        self.__host = host
+        self.__port = port
+        self.__clients = []
+        self.__nicknames = []
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.bind((self.__host, self.__port))
+        print('Server is listening...')
+        self.server.listen()
 
-clients = []
-nicknames = []
+    def broadcast(self, message):
+        for client in self.__clients:
+            client.send(message)
 
-# broadcast method
-def broadcast(message):
-    for client in clients:
-        client.send(message)
+    def handle(self, client):
+        while True:
+            try:
+                message = client.recv(1024)
+                self.broadcast(message)
+            except:
+                index = self.__clients.index(client)
+                self.__clients.remove(client)
+                client.close()
+                nickname = self.__nicknames[index]
+                self.broadcast(f'{nickname} left the chat!'.encode(common.ENCODING))
+                break
 
-    
-# handling the client
-def handle(client):
-    while True:
-        try:
-            message = client.recv(1024)
-            broadcast(message)
-        except:
-            index = client.index(client)
-            clients.remove(client)
-            client.close()
-            nickname = nicknames[index]
-            broadcast(f'{nickname} left the chat!'.encode('ascii'))
-            nicknames.remove(nickname)
-            break
+    def host(self):
+        while True:
+            client, address = self.server.accept()
+            print(f'Connected with {str(address)}')
 
-# main recieve method
-def receive():
-    while True:
-        # accept clients connection req and 
-        # print confirmation when they do so Server Admin knows
-        client, address = server.accept()
-        print(f'Connected with {str(address)}')
+            client.send(common.KEYWORD.encode(common.ENCODING))
+            nickname = client.recv(1024).decode(common.ENCODING)
+            self.__nicknames.append(nickname)
+            self.__clients.append(client)
 
-        # send to the client keyword "nick"
-        # so the client knows to send their name
-        client.send('NICK'.encode('ascii'))
-        nickname = client.recv(1024).decode('ascii')
-        nicknames.append(nickname)
-        clients.append(client)
+            print(f'Nickname of the client is {nickname}')
+            self.broadcast(f'{nickname} joined the chat!'.encode(common.ENCODING))
+            client.send('Connected to the server!'.encode(common.ENCODING))
 
-        print(f'Nickname of the client is {nickname}')
-        broadcast(f'{nickname} joined the chat!'.encode('ascii'))
-        client.send('Connected to the server!'.encode('ascii'))
+            thread = threading.Thread(target=self.handle, args=(client,))
+            thread.start()
 
-        thread = threading.Thread(target=handle, args=(client,))
-        thread.start()
-
-print('Server is listening...')
-receive()
+server = Server(common.HOST_NAME, common.PORT)
+server.host()
